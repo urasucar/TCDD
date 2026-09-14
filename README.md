@@ -4,9 +4,11 @@ Demiryolu güvenliği üzerine bir farkındalık oyunu. 12 kaza kaydı izliyorsu
 
 Oyun fikri: **Uras** (10 yaşında). Kod [Claude Code](https://claude.com/claude-code) ile yazıldı.
 
+**Hemen oyna:** https://urasucar.github.io/TCDD/
+
 ## Nasıl oynanır
 
-1. `rayda-son-saniye/index.html` dosyasını tarayıcıda aç. Kurulum gerekmez.
+1. Yukarıdaki bağlantıyı aç ya da `rayda-son-saniye/index.html` dosyasını tarayıcıda aç. Kurulum gerekmez.
 2. **Arşivi aç** düğmesine bas.
 3. Birinin kendini tehlikeye attığı ilk anda **TEHLİKE** düğmesine bas ya da boşluk tuşuna dokun. Ne kadar erken yakalarsan o kadar çok puan alırsın; tehlike yokken basarsan −20.
 4. Kayıt bitince olay tutanağındaki soruyu cevapla (fareyle ya da 1–4 tuşlarıyla).
