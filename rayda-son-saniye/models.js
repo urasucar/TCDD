@@ -43,6 +43,9 @@ function poseAngles(p) {
       a.hipL = 0.6; a.kneeL = 1.2; a.hipR = -0.3; a.kneeR = 0.5; a.shL = 2.4; a.shR = 2.0; a.abL = a.abR = 0.6; a.lean = 0.2; break;
     case 'hang':
       a.shL = a.shR = 2.9; a.elL = a.elR = 0.2; a.hipL = 0.2 + 0.3 * s; a.hipR = -0.2 - 0.3 * s; a.kneeL = a.kneeR = 0.5; a.hy = 0.92; break;
+    case 'cycle':
+      a.hipL = 1.1 + 0.38 * s; a.kneeL = 1.3 - 0.5 * s; a.hipR = 1.1 - 0.38 * s; a.kneeR = 1.3 + 0.5 * s;
+      a.shL = a.shR = 1.05; a.elL = a.elR = 0.3; a.abL = a.abR = 0.2; a.lean = 0.42; a.head = -0.25; a.hy = 0.95; break;
     case 'limp':
       a.hipL = 0.35; a.kneeL = 0.5; a.hipR = -0.2; a.kneeR = 0.15; a.shL = 1.3; a.abL = 1.0; a.elL = 0.6; a.shR = -0.6; a.abR = 0.8; a.elR = 0.3; a.head = 0.25; a.hy = 0.92; break;
     case 'flail':
@@ -158,6 +161,9 @@ function drawPerson(p) {
 
 function personDrawable(list, p) {
   if (!p.vis) return;
+  if (!p.noShadow && !['flail', 'hang', 'climb', 'jump', 'limp', 'crawl'].includes(p.pose)) {
+    list.push({ k: 1e9, d: () => softShadow(p.x, p.gy != null ? p.gy : p.y, p.z, 0.3, 0.24, p.pose === 'kneel' || p.pose === 'crouch' ? 1.2 : 1) });
+  }
   list.push({ k: adist(p.x - 0.35, p.x + 0.35, p.y, p.y + 1.8, p.z - 0.35, p.z + 0.35) + (p.kb != null ? p.kb : -0.2), d: () => drawPerson(p) });
 }
 
@@ -208,12 +214,14 @@ function trainSpan(tr) { const L = trainLen(tr); return tr.dir > 0 ? [tr.x - L, 
 function carDecal(type, lead, trail, dir, len) {
   const S = CARS[type];
   return (n, map, f) => {
-    const L2 = len / 2;
+    const L2 = len / 2, C0 = S.col;
     if (n === '+z' || n === '-z') {
+      dq(map, -L2, 1.2, L2, 1.5, [C0[0] * 0.7, C0[1] * 0.68, C0[2] * 0.66], f);
+      dq(map, -L2, S.h - 0.22, L2, S.h, [C0[0] * 0.8, C0[1] * 0.78, C0[2] * 0.76], f);
       if (type === 'pass') {
         dq(map, -L2, 1.45, L2, 1.68, [176, 30, 30], f);
         dq(map, -L2, 3.45, L2, 3.55, [40, 70, 140], f);
-        for (let u = -L2 + 3.2; u < L2 - 3.4; u += 2.3) dq(map, u, 2.25, u + 1.5, 3.15, [44, 54, 64], f * 1.1);
+        for (let u = -L2 + 3.2; u < L2 - 3.4; u += 2.3) { dq(map, u, 2.25, u + 1.5, 3.15, [44, 54, 64], f * 1.1); dq(map, u, 2.85, u + 1.5, 3.15, [112, 128, 142], f); dq(map, u + 1.45, 2.25, u + 1.5, 3.15, [150, 150, 146], f); }
         for (const u of [-L2 + 0.9, L2 - 1.9]) dq(map, u, 1.25, u + 1.0, 3.3, [168, 168, 164], f);
       } else if (type === 'loco_e') {
         dq(map, -L2, 1.9, L2, 2.2, [236, 236, 230], f);
@@ -225,7 +233,7 @@ function carDecal(type, lead, trail, dir, len) {
         for (let u = -L2 + 4; u < L2 - 4; u += 1.1) dq(map, u, 2.4, u + 0.7, 3.8, [180, 96, 26], f);
       } else if (type === 'emu' || type === 'emu_c') {
         dq(map, -L2, 1.25, L2, 1.85, [196, 32, 38], f);
-        for (let u = -L2 + 1.5; u < L2 - 2; u += 3.4) dq(map, u, 2.2, u + 2.4, 3.3, [40, 50, 60], f * 1.1);
+        for (let u = -L2 + 1.5; u < L2 - 2; u += 3.4) { dq(map, u, 2.2, u + 2.4, 3.3, [40, 50, 60], f * 1.1); dq(map, u, 2.95, u + 2.4, 3.3, [112, 128, 142], f); }
         for (const u of [-L2 / 3 - 0.7, L2 / 3 - 0.7]) { dq(map, u, 1.25, u + 1.4, 3.45, [190, 190, 186], f); dq(map, u + 0.15, 2.3, u + 1.25, 3.2, [56, 64, 72], f); }
       } else if (type === 'box') {
         for (let u = -L2 + 0.6; u < L2; u += 1.3) dq(map, u, 1.25, u + 0.12, S.h, [80, 42, 28], f);
@@ -240,7 +248,12 @@ function carDecal(type, lead, trail, dir, len) {
     const leadFace = dir > 0 ? '+x' : '-x', trailFace = dir > 0 ? '-x' : '+x';
     if ((n === leadFace && lead) || (n === trailFace && trail && (type === 'loco_e' || type === 'emu_c'))) {
       dq(map, -1.2, 2.55, 1.2, 3.55, [30, 38, 46], f * 1.2);
+      dq(map, -1.2, 3.2, 1.2, 3.55, [96, 112, 126], f);
+      dq(map, -0.04, 2.55, 0.04, 3.55, [22, 22, 24], f);
       dq(map, -1.47, 1.25, 1.47, 1.5, [240, 200, 40], f);
+      dq(map, -1.25, 1.65, -0.75, 1.95, [210, 210, 196], f * 1.2);
+      dq(map, 0.75, 1.65, 1.25, 1.95, [210, 210, 196], f * 1.2);
+      dq(map, -0.25, 3.72, 0.25, 3.92, [210, 210, 196], f * 1.2);
     }
   };
 }
@@ -248,6 +261,11 @@ function carDecal(type, lead, trail, dir, len) {
 function trainDrawables(list, tr) {
   let off = 0;
   const cam = R.cam;
+  const [sa, sb] = trainSpan(tr), sa2 = tr.clipX != null ? Math.max(sa, tr.clipX) : sa;
+  if (sb > sa2) list.push({ k: 1e9, d: () => {
+    const a = R.env.shadowA == null ? 0.32 : R.env.shadowA, yy = tr.y + 0.4;
+    for (const [w, m] of [[2.3, 0.35], [1.6, 0.55]]) face([[sa2, yy, tr.z - w], [sb, yy, tr.z - w], [sb, yy, tr.z + w], [sa2, yy, tr.z + w]], 'rgba(0,0,0,' + (a * m).toFixed(3) + ')');
+  } });
   tr.cars.forEach((type, i) => {
     const S = CARS[type], len = S.len;
     const front = tr.x - tr.dir * off, back = front - tr.dir * len;
@@ -260,9 +278,18 @@ function trainDrawables(list, tr) {
     const z = tr.z, y = tr.y;
     const lead = i === 0, trail = i === tr.cars.length - 1;
     list.push({ k: adist(x0, x1, y, y + S.h, z - 1.5, z + 1.5), d: () => {
-      for (const bx of [fullCx - len / 2 + 3, fullCx + len / 2 - 3]) if (bx - 1.4 >= x0) box({ x: bx, z, y: y + 0.12, w: 2.8, d: 2.3, h: 0.85, col: [36, 34, 32] });
+      const ws = cam.z < z ? -1 : 1;
+      for (const bx of [fullCx - len / 2 + 3, fullCx + len / 2 - 3]) if (bx - 1.4 >= x0) {
+        box({ x: bx, z, y: y + 0.12, w: 2.8, d: 2.3, h: 0.85, col: [36, 34, 32] });
+        for (const wx of [bx - 1.05, bx + 1.05]) { disc(wx, y + 0.5, z + ws * 1.2, 0.45, [30, 28, 26], 1, 1); disc(wx, y + 0.5, z + ws * 1.22, 0.17, [104, 98, 90], 1, 0.6); }
+        line3([bx - 1.05, y + 0.5, z + ws * 1.24], [bx + 1.05, y + 0.5, z + ws * 1.24], [70, 66, 60], 0.06, 0.6);
+      }
       box({ x: cx, z, y: y + 0.9, w: Math.max(0.1, cl - 0.6), d: 2.6, h: 0.36, col: [44, 42, 40] });
       box({ x: cx, z, y: y + 1.2, w: cl, d: 2.95, h: S.h - 1.2, col: S.col, cols: { top: S.roof }, decal: carDecal(type, lead, trail, tr.dir, cl) });
+      if (type === 'pass' || type === 'emu' || type === 'emu_c') for (const o of [-len / 4, len / 4]) {
+        const rx = fullCx + o;
+        if (rx - 1.2 >= x0) box({ x: rx, z, y: y + S.h, w: 2.4, d: 1.6, h: 0.32, col: [150, 152, 150] });
+      }
       if (S.pant && (!S.cab || lead)) {
         const px = cx + tr.dir * (len / 2 - 5), top = y + S.h;
         line3([px - 1.2, top, z], [px, 5.1 + y, z], [50, 50, 50], 0.06, 1);
@@ -304,6 +331,9 @@ function offs(o, lf, lx) { const s = Math.sin(o.yaw || 0), c = Math.cos(o.yaw ||
 
 function drawCar(o) {
   const col = o.col || [170, 172, 176], yaw = o.yaw || 0, y = o.y || 0;
+  const sp = [];
+  for (let i = 0; i < 14; i++) { const t = i / 14 * PI * 2, [sx, sz] = offs(o, Math.sin(t) * 2.6, Math.cos(t) * 1.25); sp.push([sx, y + 0.03, sz]); }
+  face(sp, 'rgba(0,0,0,' + ((R.env.shadowA == null ? 0.32 : R.env.shadowA) * 0.85).toFixed(3) + ')');
   for (const [lf, lx] of [[1.35, 0.8], [1.35, -0.8], [-1.35, 0.8], [-1.35, -0.8]]) {
     const [wx, wz] = offs(o, lf, lx);
     box({ x: wx, z: wz, y, w: 0.24, d: 0.64, h: 0.62, yaw, col: [22, 22, 22] });
@@ -314,7 +344,8 @@ function drawCar(o) {
   } });
   const [cx, cz] = offs(o, -0.25, 0);
   box({ x: cx, z: cz, y: y + 1.0, w: 1.58, d: 2.2, h: 0.55, yaw, col: [48, 56, 64], cols: { top: col }, decal: (n, map, f) => {
-    if (n === '+x' || n === '-x') dq(map, -0.2, 0.0, 0.08, 0.55, col, f);
+    if (n === '+x' || n === '-x') { dq(map, -0.2, 0.0, 0.08, 0.55, col, f); dq(map, -1.0, 0.36, 0.9, 0.55, [120, 136, 150], f); }
+    if (n === '+z' || n === '-z') dq(map, -0.72, 0.33, 0.72, 0.55, [124, 140, 154], f);
   } });
 }
 

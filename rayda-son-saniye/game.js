@@ -3,7 +3,16 @@
 
 function nrm(x, y, z) { const l = Math.hypot(x, y, z); return [x / l, y / l, z / l]; }
 function mkEnv(o) {
-  return Object.assign({ sky: ['#8fa6b8', '#d6dbd6'], ground: ['#7a7866', '#4b4e42'], fog: [196, 202, 202], fogD: 380, fogMax: 0.9, lum: 1, amb: 0.5, L: nrm(-0.45, 0.8, -0.4), night: false }, o);
+  o = o || {};
+  const e = Object.assign({
+    sky: ['#8fa6b8', '#d6dbd6'], ground: ['#7a7866', '#4b4e42'], fog: [196, 202, 202], fogD: 380, fogMax: 0.9, lum: 1, amb: 0.5, L: nrm(-0.45, 0.8, -0.4), night: false,
+    clouds: 7, cloudA: 0.5, cloudCol: '246,246,242', grain: 0.5, shadowA: 0.32, rain: 0, snow: 0, sun: null,
+  }, o);
+  if (e.night) {
+    if (o.cloudCol == null) { e.cloudCol = '84,88,100'; e.cloudA = 0.3; }
+    if (o.shadowA == null) e.shadowA = 0.16;
+  }
+  return e;
 }
 
 const G = { idx: 0, score: 0, results: [], state: 'intro', S: null, scene: null, frozen: false, replay: false, last: 0, cur: null, muted: false };
@@ -12,6 +21,11 @@ const disp = $('#screen'), dctx = disp.getContext('2d');
 const buf = document.createElement('canvas'); buf.width = W; buf.height = H;
 const bctx = buf.getContext('2d');
 const HAS_FILTER = 'filter' in dctx;
+const bloomC = document.createElement('canvas'); bloomC.width = 240; bloomC.height = 135;
+const blx = bloomC.getContext('2d');
+const prevC = document.createElement('canvas'); prevC.width = W; prevC.height = H;
+const pctx = prevC.getContext('2d');
+let ghostOk = false;
 
 const noiseC = [];
 for (let n = 0; n < 4; n++) {
@@ -62,6 +76,17 @@ function post(S, sc) {
   if (HAS_FILTER) c.filter = k === 'cctv' ? 'contrast(1.12) brightness(1.04) blur(0.55px)' : k === 'cab' ? 'contrast(1.06) blur(0.35px)' : 'contrast(1.03) saturate(1.08)';
   c.drawImage(buf, 0, 0);
   c.filter = 'none';
+  if (k === 'cctv') {
+    if (ghostOk) { c.globalAlpha = 0.2; c.drawImage(prevC, 0, 0); c.globalAlpha = 1; }
+    pctx.drawImage(disp, 0, 0); ghostOk = true;
+  }
+  if (HAS_FILTER) {
+    blx.filter = 'brightness(0.6) contrast(5) blur(2px)';
+    blx.clearRect(0, 0, 240, 135); blx.drawImage(buf, 0, 0, 240, 135); blx.filter = 'none';
+    c.globalCompositeOperation = 'screen'; c.globalAlpha = S.env.night ? 0.75 : 0.4;
+    c.drawImage(bloomC, 0, 0, W, H);
+    c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+  }
   if (k !== 'phone') {
     c.globalCompositeOperation = 'saturation';
     c.fillStyle = k === 'cctv' ? 'rgba(128,128,128,0.72)' : 'rgba(128,128,128,0.25)';
@@ -78,6 +103,20 @@ function post(S, sc) {
   const vg = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, k === 'phone' ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.6)');
   c.fillStyle = vg; c.fillRect(0, 0, W, H);
+
+  const e = S.env;
+  if (e.rain || e.snow) {
+    const rr = G.state === 'play' && !G.frozen ? Math.random : srand(99);
+    if (e.rain) {
+      c.strokeStyle = 'rgba(205,215,225,' + (0.12 + 0.22 * e.rain).toFixed(2) + ')'; c.lineWidth = 1.1; c.beginPath();
+      for (let i = 0, n = 320 * e.rain; i < n; i++) { const x = rr() * (W + 80) - 40, y = rr() * H, l = 12 + rr() * 26; c.moveTo(x, y); c.lineTo(x + l * 0.16, y + l); }
+      c.stroke();
+    }
+    if (e.snow) {
+      c.fillStyle = 'rgba(240,242,245,0.75)';
+      for (let i = 0, n = 260 * e.snow; i < n; i++) { const s = 1 + rr() * 2.6; c.fillRect(rr() * W, rr() * H, s, s); }
+    }
+  }
 
   if (S.glitch > 0) {
     const g = Math.min(1, S.glitch * 2.5);
@@ -174,10 +213,12 @@ function buildIndex() {
     li.querySelector('.plc').textContent = sc.place;
     ol.appendChild(li);
   });
+  const now = ol.querySelector('.now');
+  if (now) ol.scrollTop = Math.max(0, now.offsetTop - ol.offsetTop - 60);
 }
 
 function meters() {
-  $('#mRec').textContent = fmt2(Math.min(G.idx + (G.state === 'summary' ? 0 : 1), SCENES.length)) + '/' + SCENES.length;
+  $('#mRec').textContent = fmt2(G.state === 'summary' ? SCENES.length : Math.min(G.idx + 1, SCENES.length)) + '/' + SCENES.length;
   $('#mScore').textContent = G.score;
 }
 
@@ -185,7 +226,7 @@ function loadScene(i, replay) {
   AU.stopAll();
   G.idx = i; G.scene = SCENES[i]; G.replay = !!replay;
   G.S = newState(G.scene);
-  G.frozen = false; G.state = 'play';
+  G.frozen = false; G.state = 'play'; ghostOk = false;
   if (!replay) G.cur = { pts: 0, early: 0, spotted: false, late: false, spotT: null, answer: null };
   const sc = G.scene;
   $('#stamp').hidden = true; $('#intro').hidden = true;

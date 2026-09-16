@@ -91,7 +91,7 @@ function itemDrawables(L, S) {
   for (const it of S.items || []) if (!it.hidden) L.push({ k: adist(it.x - 0.3, it.x + 0.3, it.y, it.y + 0.3, it.z - 0.3, it.z + 0.3) - 0.1, d: () => box({ x: it.x, z: it.z, y: it.y, w: it.w, d: it.d, h: it.h, yaw: it.yaw || 0, col: it.col }) });
 }
 function lights(L) { for (const it of L) if (it.light) it.light(); }
-function face2(x0, x1, z0, z1, y, col, f) { face([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], col, f == null ? lightF(0, 1, 0) : f, true); }
+function face2(x0, x1, z0, z1, y, col, f, tex) { face([[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]], col, f == null ? lightF(0, 1, 0) : f, true, tex == null ? 0.8 : tex); }
 
 /* =====================================================================
    K-01  Hemzemin geçit: bariyerin etrafından dolanan otomobil

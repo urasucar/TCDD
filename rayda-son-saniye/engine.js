@@ -59,7 +59,23 @@ function clipNear(cs) {
   return out;
 }
 
-function face(pts, col, f, seam) {
+function grainPat() {
+  if (R.grain) return R.grain;
+  const mk = (n, amp) => {
+    const c = document.createElement('canvas'); c.width = c.height = n;
+    const x = c.getContext('2d'), im = x.createImageData(n, n);
+    for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (Math.random() - 0.5) * amp; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+    x.putImageData(im, 0, 0);
+    return c;
+  };
+  const c = mk(256, 150), blot = mk(32, 150), x = c.getContext('2d');
+  x.globalAlpha = 0.6;
+  for (const ox of [-256, 0]) for (const oy of [-256, 0]) x.drawImage(blot, ox + 128, oy + 128, 256, 256);
+  R.grain = R.ctx.createPattern(c, 'repeat');
+  return R.grain;
+}
+
+function face(pts, col, f, seam, tex) {
   const cam = R.cam, ctx = R.ctx;
   let cs = [];
   for (const p of pts) cs.push(cam.toCam(p[0], p[1], p[2]));
@@ -77,7 +93,48 @@ function face(pts, col, f, seam) {
   ctx.fillStyle = typeof col === 'string' ? col : shade(col, f, dz);
   ctx.fill();
   if (seam) { ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 1; ctx.stroke(); }
+  if (tex && R.env.grain) {
+    ctx.globalAlpha = Math.min(1, tex * R.env.grain); ctx.globalCompositeOperation = 'overlay';
+    ctx.fillStyle = grainPat(); ctx.fill();
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
   return true;
+}
+
+function softShadow(x, y, z, rx, rz, k) {
+  const e = R.env, a = (k == null ? 1 : k) * (e.shadowA == null ? 0.32 : e.shadowA);
+  if (a <= 0.01) return;
+  for (const [s, m] of [[1.7, 0.3], [1.0, 0.6]]) {
+    const pts = [];
+    for (let i = 0; i < 14; i++) { const t = i / 14 * PI * 2; pts.push([x + Math.cos(t) * rx * s, y + 0.03, z + Math.sin(t) * rz * s]); }
+    face(pts, 'rgba(0,0,0,' + (a * m).toFixed(3) + ')');
+  }
+}
+
+function clouds(e) {
+  if (!e.clouds) return;
+  const ctx = R.ctx, cam = R.cam, hy = cam.horizon(), r = srand(e.cloudSeed || 7);
+  ctx.save();
+  for (let i = 0; i < e.clouds; i++) {
+    const az = r() * PI * 2, el = 0.03 + r() * 0.2, w = 0.3 + r() * 0.45, fl = 0.16 + r() * 0.14, parts = [];
+    for (let k = 0; k < 6; k++) parts.push([r() - 0.5, r() - 0.5, 0.35 + r() * 0.4]);
+    let d = az - cam.yaw + (e.cloudDrift || 0) * (performance.now() / 1000);
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    if (Math.abs(d) > 1.3) continue;
+    const sx = W / 2 + Math.tan(d) * cam.F, sy = hy - Math.tan(el) * cam.F, rw = w * cam.F * 0.45;
+    for (const [px, py, pr] of parts) {
+      const cx = sx + px * rw * 1.4, cy = sy + py * rw * fl, rr = rw * pr;
+      ctx.save();
+      ctx.translate(cx, cy); ctx.scale(1, fl * 1.6);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rr);
+      g.addColorStop(0, 'rgba(' + e.cloudCol + ',' + e.cloudA + ')');
+      g.addColorStop(0.55, 'rgba(' + e.cloudCol + ',' + e.cloudA * 0.5 + ')');
+      g.addColorStop(1, 'rgba(' + e.cloudCol + ',0)');
+      ctx.fillStyle = g; ctx.fillRect(-rr, -rr, rr * 2, rr * 2);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
 }
 
 function line3(a, b, col, wm, minPx, f) {
@@ -162,9 +219,25 @@ function skyGround(e) {
   let g = ctx.createLinearGradient(0, hy - 400, 0, hy);
   g.addColorStop(0, e.sky[0]); g.addColorStop(1, e.sky[1]);
   ctx.fillStyle = g; ctx.fillRect(-400, -400, W + 800, hy + 400);
+  const sun = e.sun;
+  if (sun) {
+    let d = sun[0] - R.cam.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+    if (Math.abs(d) < 1.4) {
+      const sx = W / 2 + Math.tan(d) * R.cam.F, sy = hy - Math.tan(sun[1]) * R.cam.F, rr = 260;
+      const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, rr);
+      sg.addColorStop(0, 'rgba(' + sun[2] + ',0.9)'); sg.addColorStop(0.08, 'rgba(' + sun[2] + ',0.55)'); sg.addColorStop(1, 'rgba(' + sun[2] + ',0)');
+      ctx.fillStyle = sg; ctx.fillRect(sx - rr, sy - rr, rr * 2, rr * 2);
+    }
+  }
+  clouds(e);
   g = ctx.createLinearGradient(0, hy, 0, H + 200);
   g.addColorStop(0, e.ground[0]); g.addColorStop(1, e.ground[1]);
   ctx.fillStyle = g; ctx.fillRect(-400, hy - 1, W + 800, H - hy + 600);
+  if (e.grain) {
+    ctx.globalAlpha = Math.min(1, e.grain * 0.9); ctx.globalCompositeOperation = 'overlay';
+    ctx.fillStyle = grainPat(); ctx.fillRect(-400, hy, W + 800, H - hy + 600);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
 }
 
 function hills(seed, col, dist, amp) {
@@ -194,11 +267,12 @@ function trackBed(z, x0, x1, opt) {
   opt = opt || {};
   const [a, b] = viewRange(x0 == null ? -1e4 : x0, x1 == null ? 1e4 : x1, opt.span || 260);
   const bc = opt.ballast || [104, 99, 90], sc = [bc[0] * 0.72, bc[1] * 0.72, bc[2] * 0.72], y = opt.y || 0;
-  for (let x = a; x < b; x += 6) {
-    const x2 = Math.min(b, x + 6);
-    face([[x, y + 0.02, z - 2.2], [x2, y + 0.02, z - 2.2], [x2, y + 0.28, z - 1.5], [x, y + 0.28, z - 1.5]], sc, lightF(0, 0.94, -0.33), true);
-    face([[x, y + 0.28, z - 1.5], [x2, y + 0.28, z - 1.5], [x2, y + 0.28, z + 1.5], [x, y + 0.28, z + 1.5]], bc, lightF(0, 1, 0), true);
-    face([[x, y + 0.28, z + 1.5], [x2, y + 0.28, z + 1.5], [x2, y + 0.02, z + 2.2], [x, y + 0.02, z + 2.2]], sc, lightF(0, 0.94, 0.33), true);
+  for (let x = a; x < b; x += 12) {
+    const x2 = Math.min(b, x + 12);
+    face([[x, y + 0.02, z - 2.2], [x2, y + 0.02, z - 2.2], [x2, y + 0.28, z - 1.5], [x, y + 0.28, z - 1.5]], sc, lightF(0, 0.94, -0.33), true, 1.2);
+    face([[x, y + 0.28, z - 1.5], [x2, y + 0.28, z - 1.5], [x2, y + 0.28, z + 1.5], [x, y + 0.28, z + 1.5]], bc, lightF(0, 1, 0), true, 1.5);
+    face([[x, y + 0.28, z + 1.5], [x2, y + 0.28, z + 1.5], [x2, y + 0.02, z + 2.2], [x, y + 0.02, z + 2.2]], sc, lightF(0, 0.94, 0.33), true, 1.2);
+    face([[x, y + 0.285, z - 1.0], [x2, y + 0.285, z - 1.0], [x2, y + 0.285, z + 1.0], [x, y + 0.285, z + 1.0]], 'rgba(40,30,22,0.18)');
   }
 }
 
@@ -254,12 +328,34 @@ function catenary(list, z, side, sp, off) {
 
 function tree(list, x, z, s, seed) {
   const r = srand(seed);
-  const blobs = [];
-  for (let i = 0; i < 6; i++) blobs.push([rnd0(r, -1.4, 1.4) * s, (3 + r() * 3) * s, rnd0(r, -1.2, 1.2) * s, (1.2 + r()) * s, r()]);
+  const blobs = [], hue = r();
+  for (let i = 0; i < 9; i++) blobs.push([rnd0(r, -1.5, 1.5) * s, (2.9 + r() * 3.4) * s, rnd0(r, -1.3, 1.3) * s, (1.0 + r() * 0.9) * s, r()]);
+  blobs.sort((p, q) => q[2] - p[2]);
+  const br = [rnd0(r, 0.6, 1.1) * s, rnd0(r, -0.4, 0.4) * s];
   list.push({ k: adist(x - 2 * s, x + 2 * s, 0, 7 * s, z - 2 * s, z + 2 * s), d: () => {
-    line3([x, 0, z], [x, 3.6 * s, z], [62, 48, 36], 0.28 * s, 1);
-    blobs.sort((p, q) => q[2] - p[2]);
-    for (const bl of blobs) disc(x + bl[0], bl[1], z + bl[2], bl[3], [52 + bl[4] * 30, 72 + bl[4] * 30, 44], 0.75 + bl[4] * 0.35, 1);
+    softShadow(x, 0, z, 2.1 * s, 1.7 * s, 0.7);
+    line3([x, 0, z], [x, 3.8 * s, z], [56, 43, 33], 0.3 * s, 1);
+    line3([x, 2.5 * s, z], [x + br[0], 3.9 * s, z + br[1]], [56, 43, 33], 0.13 * s, 1);
+    for (const bl of blobs) {
+      const g = bl[4], tint = [36 + hue * 18 + g * 16, 54 + g * 22, 32 + hue * 8];
+      disc(x + bl[0], bl[1], z + bl[2], bl[3], tint, 0.72, 1);
+      disc(x + bl[0] - 0.22 * bl[3], bl[1] + 0.26 * bl[3], z + bl[2] - 0.18 * bl[3], bl[3] * 0.7, [tint[0] + 26, tint[1] + 30, tint[2] + 12], 0.98, 1);
+      disc(x + bl[0] - 0.36 * bl[3], bl[1] + 0.42 * bl[3], z + bl[2] - 0.3 * bl[3], bl[3] * 0.32, [tint[0] + 48, tint[1] + 52, tint[2] + 22], 1.05, 0.6);
+    }
+  } });
+}
+
+function bush(list, x, z, s, seed) {
+  const r = srand(seed), bl = [];
+  for (let i = 0; i < 5; i++) bl.push([rnd0(r, -0.7, 0.7) * s, (0.3 + r() * 0.35) * s, rnd0(r, -0.5, 0.5) * s, (0.35 + r() * 0.3) * s, r()]);
+  bl.sort((p, q) => q[2] - p[2]);
+  list.push({ k: adist(x - s, x + s, 0, s, z - s, z + s), d: () => {
+    softShadow(x, 0, z, 0.9 * s, 0.7 * s, 0.6);
+    for (const b of bl) {
+      const t = [48 + b[4] * 24, 62 + b[4] * 24, 36];
+      disc(x + b[0], b[1], z + b[2], b[3], t, 0.72, 0.8);
+      disc(x + b[0] - 0.2 * b[3], b[1] + 0.25 * b[3], z + b[2] - 0.15 * b[3], b[3] * 0.65, [t[0] + 30, t[1] + 32, t[2] + 14], 1, 0.6);
+    }
   } });
 }
 function rnd0(r, a, b) { return a + r() * (b - a); }
